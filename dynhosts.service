@@ -1,0 +1,12 @@
+[Unit]
+Description=dynhosts, a dynamic hosts file management framework
+After=network.target
+
+[Service]
+Type=simple
+# uncomment and modify one of the following two lines as appropriate
+# ExecStart=/path/to/dynhosts.pl daemon -m production -l http://*:8080
+# ExecStart=/path/to/dynhosts.pl daemon -m production -l https://*:8080?cert=/path/to/cert.pem&key=/path/to/key.pem
+
+[Install]
+WantedBy=multi-user.target

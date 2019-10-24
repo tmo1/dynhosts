@@ -1,0 +1,70 @@
+Introduction
+
+Dynhosts is a system for the dynamic updating of /etc/hosts on a central system by other systems that connect to the network with different addresses at different times. The motivation for this was the author's laptop, which would sometimes connect directly to his network, and sometimes over a Wireguard VPN. For the system to be reachable in both scenarios via a fixed configuration on other systems on the network, there was a need for a mechanism to dynamically update the name resolution framework based on the current network connection of the laptop. In some contexts, DHCP can be used for this, but Wireguard interfaces cannot be configured via DHCP. Another option is dynamic DNS updating (RFC 2136) using tools such as BIND's nsupdate or Knot DNS's knsupdate, but these require running a full-blown, properly configured DNS server that supports RFC 2136 updating - not a trivial task. Enter dynhosts, a very simple system that bypasses the comxplexities of DNS and works through the hosts file.
+
+Deployment
+
+Dynhosts is a Mojolicious Lite Perl script. Its only dependency beyond Perl itself is Mojolicious (libmojolicious-perl on Debian). The script needs to be owned by root and SUID, in order to be able to modify /etc/hosts.
+
+Configuration
+
+Create the file /etc/dynhosts_auth, consisting of a series of lines of the form:
+
+user1	password1	hostname1
+user2	password2	hostname2
+user3	password3	hostname3
+
+Each line consists of a username, password, and hostname. Any client supplying a matching username and password will be allowed to modify the hosts entry (or add it if it does not yet exist) for the specified hostname (and set it to whatever it wants).
+
+The script can be run (as root, since it needs to modify /etc/hosts) with the command:
+
+dynhosts.pl daemon -l
+
+To run it under systemd, follow these directions (based on Mojolicious::Guides::Cookbook https://metacpan.org/pod/distribution/Mojolicious/lib/Mojolicious/Guides/Cookbook.pod):
+
+To manage the web server with systemd, you can use the included unit configuration file (modified as appropriate, and placed or symlinked into /etc/systemd.d). Run:
+
+systemctl enable /path/to/dynhosts.service
+systemctl start dynhosts.service
+
+Clients
+
+No special software is necessary on the client side. To update the server's hosts file with its current network address, the client simply makes an HTTP POST request to the server with an endpoint of '/update', with HTTP Basic authentication with a username / password combination specified in dynhosts_auth, and the appropriate hostname and current IP address as POST parameters. E.g., assuming that the machine that dynhosts is running on is named 'servername' and the client (with hostname1) wants to update its address to 10.0.0.2, run the command:
+
+curl --netrc-file .dynhosts-credentials -d "hostname=hostname1&ip=10.0.0.2" http://servername:8080/update
+
+[The above assumes the existence of a file on the client named '.dynhosts-credentials' (ideally with permissions of 600) containing the line:
+
+machine servername login user1 password password1
+
+This is preferable to passing the credentials on the curl command line with '-u user1:password1'; see the curl manpage for more information about these and related options.]
+
+On Debian, this can be integrated into /etc/network/interfaces with a line like the following (in the appropriate stanza):
+
+post-up curl --netrc-file .dynhosts-credentials -d "hostname=hostname1&ip=10.0.0.2" http://servername:8080/update
+
+If the interface is being configured via dhcp, then the above becomes more complicated, since the assigned address will not necessarily be known in advance.
+
+SSL / TLS
+
+The above instructions utilize plain HTTP. Using secure HTTPS is strongly recommended, as this will provide encryption and verification to the client of the server's identity. There are various ways to do this; one relatively simple one follows (based on Vincent Tondellier's suggestion here: https://groups.google.com/d/msg/mojolicious/gjz-0uvUDLk/7F9oBdqUBwAJ):
+
+On the server, create a (self-signed) certificate and key with a command like this:
+
+openssl req -x509 -nodes -newkey rsa:4096 -keyout key.pem -out cert.pem -subj '/CN=servername'
+
+Instruct dynhosts to use HTTPS by passing it an url beginning with "https://", and provide the certificate and key locations as parameters:
+
+dynhosts.pl daemon -l https://servername:8080?cert=/path/to/cert.pem&key=/path/to/key.pem
+
+Copy the certificate (cert.pem) to the client, and modify the POST command to use it:
+
+curl --netrc-file dynhosts-credentials --cacert /path/to/cert.pem -d "hostname=hostname1&ip=10.0.0.2" https://servername:8080/update
+
+Miscellaneous
+
+dynhosts is designed to handle lines in the host file with only a canonical hostname and no aliases; it may not rewrite lines containing aliases correctly.
+
+Security
+
+Scripts running as root are quite dangerous, and I'm no security expert. Use at your own risk.
