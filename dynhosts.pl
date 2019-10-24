@@ -11,22 +11,24 @@ use Mojolicious::Lite;
 use Tie::File;
 use MIME::Base64;
 
-my ($auth_file, $hosts_file) = ('/usr/local/etc/dynhosts_auth', '/usr/local/etc/hosts');
+my ($auth_file, $hosts_file) = ('/etc/dynhosts_auth', '/etc/hosts');
 app->log->format(sub {my ($time, $level, @lines) = @_; return "@lines\n";});
 #app->log = app->log->format(sub {my ($time, $level, @lines) = @_; return "@lines\n";});
 #app->log->short(1);
 
 post '/update' => sub {
 	my $c = shift;
-	my ($hostname, $ip, $auth_string) = ($c->param('hostname'), $c->param('ip'), $c->req->headers->authorization);
-	unless (defined $hostname && defined $ip) {return $c->render(text => "'hostname' and 'ip' must be supplied as parameters.\n\n", status => 400)}
+	my ($hostname, $ip, $auth_string, $remote_address) = ($c->param('hostname'), $c->param('ip'), $c->req->headers->authorization, $c->tx->remote_address);
+	unless (defined $hostname && defined $ip) {
+		app->log->error("Request missing 'hostname' or 'ip' from $remote_address.");
+		return $c->render(text => "'hostname' and 'ip' must be supplied as parameters.\n\n", status => 400)}
 	unless (defined $auth_string && $auth_string =~ /^\s*Basic\s+(.*)$/) {
-		app->log->error("Unauthorized access from", $c->tx->remote_address, ": HTTP basic authentication credentials not present.");
+		app->log->error("Unauthorized access from $remote_address: HTTP basic authentication credentials not present.");
 		return $c->render(text => "Unauthorized!\n\n", status => 401);
 	}
 	my ($username, $password) = split /:/, decode_base64($1);
 	unless (defined $username && defined $password) {
-		app->log->error("Unauthorized access from", $c->tx->remote_address, ": no defined username / password.");
+		app->log->error("Unauthorized access from $remote_address: no defined username / password.");
 		return $c->render(text => "Unauthorized!\n\n", status => 401);
 	}
 	my $fh;
@@ -37,7 +39,7 @@ post '/update' => sub {
 	my $auth = undef;
 	while (<$fh>) {if (/^\s*\Q$username\E\s+\Q$password\E\s+\Q$hostname\E\s*$/) {$auth = 1; last;}}
 	unless ($auth) {
-		app->log->error("Unauthorized access from", $c->tx->remote_address, ": no matching username / password / hostname triplet in '$auth_file'.");
+		app->log->error("Unauthorized access from $remote_address: no matching username / password / hostname triplet in '$auth_file'.");
 		return $c->render(text => "Unauthorized!\n\n", status => 401);
 	}
 	my @hosts;
@@ -54,7 +56,7 @@ post '/update' => sub {
 		app->log->error("Failed to untie hosts file '$hosts_file'.");
 		return $c->render(text => "Internal error.\n\n", status => 500);
 	}
-	app->log->info("Successful access from", $c->tx->remote_address, ": '$hostname' successfully set to '$ip'.");
+	app->log->info("Successful access from $remote_address: '$hostname' successfully set to '$ip'.");
 	return $c->render(text => "'$hostname' successfully set to '$ip'\n\n", status => 200);
 };
 
