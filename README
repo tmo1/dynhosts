@@ -63,7 +63,9 @@ curl --netrc-file dynhosts-credentials --cacert /path/to/cert.pem -d "hostname=h
 
 Miscellaneous
 
-dynhosts is designed to handle lines in the host file with only a canonical hostname and no aliases; it may not rewrite lines containing aliases correctly.
+To update multiple hosts, multiple instances of dynhosts can be configured and multiple requests made from the updating client, but a more scalable approach is to designate one host as the master, configure dynhost just for that host, and configure dnsmasq on that host to serve the contents of its '/etc/hosts' to other hosts that need the client's updated address.
+
+Dynhosts is designed to handle lines in the host file with only a canonical hostname and no aliases; it may not rewrite lines containing aliases correctly.
 
 Security
 
