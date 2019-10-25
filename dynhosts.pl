@@ -49,7 +49,9 @@ post '/update' => sub {
 		return $c->render(text => "Internal error.\n\n", status => 500);
 	}
 	$o->flock;
-	foreach (@hosts) {if (/^\s*([^\s]+)\s+\Q$hostname\E(\s+|$)(.*)/) {$_ = "$ip\t\t$hostname$3"; $flag = 1;	last;}}
+	foreach (@hosts) {
+		my ($line, $comment) = (/^(.*?)(#.*$)/) ? ($1, $2) : ($_, undef); # anything from the first '#' character is a comment
+		if ($line =~ /^\s*([^\s]+)\s+\Q$hostname\E(\s+|$)(.*)/) {$_ = "$ip\t\t$hostname$3"; $_ .= " $comment" if defined $comment; $flag = 1; last;}}
 	push (@hosts, "$ip\t$hostname") unless ($flag);
 	undef $o;
 	unless (untie @hosts) {
